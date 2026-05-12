@@ -39,6 +39,18 @@ BitLocker + TPM + PIN
 
 With this approach, a PIN must be entered before Windows fully starts. This greatly reduces the risk related to unauthorized physical access.
 
+## Important clarification
+
+This documentation does not mean that BitLocker is broken or unusable in TPM-only mode.
+
+In a healthy configuration, with Secure Boot enabled, a working TPM, and a consistent boot chain, BitLocker can detect certain changes in the boot environment. For example, a boot order change, USB boot, PXE boot, or a change in the state measured by the TPM may trigger a BitLocker recovery key prompt.
+
+The important point is that TPM-only mode strongly relies on the trust placed in the boot chain. It remains convenient and suitable for many use cases, but it does not add user pre-authentication before the system volume is unlocked.
+
+For a sensitive workstation or a device exposed to physical access risk, TPM + PIN adds an extra layer. It requires a PIN before Windows fully starts, reducing the reliance on a configuration based only on the TPM and the measured boot state.
+
+**This documentation should therefore be understood as a hardening note, not as an alert claiming that BitLocker is defective.**
+
 ## Relevant threat model
 
 This documentation mainly focuses on the following scenarios:
