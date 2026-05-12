@@ -49,6 +49,22 @@ Cette documentation cible principalement les scénarios suivants :
 - downgrade attack contre certains composants de boot
 - configuration BitLocker trop permissive en TPM-only
 
+## État recommandé
+
+Configuration recommandée pour un poste sensible :
+
+```text
+BitLocker activé
+Secure Boot activé
+TPM activé
+Clé de récupération sauvegardée
+Protecteur TPM + PIN activé
+Boot USB limité si non nécessaire
+Boot PXE désactivé si non nécessaire
+Firmware à jour
+Windows Update à jour
+```
+
 ## Vérifier l'état de BitLocker
 
 Commande PowerShell :
@@ -60,7 +76,16 @@ Get-BitLockerVolume
 Commande alternative :
 
 ```cmd
-manage-bde -status
+manage-bde -status C:
+```
+
+Points utiles à vérifier :
+
+```text
+Conversion Status
+Protection Status
+Lock Status
+Encryption Method
 ```
 
 ## Vérifier les protecteurs BitLocker
@@ -71,12 +96,20 @@ Commande :
 manage-bde -protectors -get C:
 ```
 
-Points à contrôler :
+Dans une configuration TPM-only, on peut voir uniquement :
 
-- présence d'un protecteur TPM
-- présence d'une clé de récupération
-- présence ou absence d'un PIN au démarrage
-- type de protecteur utilisé pour le lecteur système
+```text
+TPM
+Mot de passe numérique
+```
+
+Le **mot de passe numérique** correspond à la clé de récupération BitLocker.
+
+Dans une configuration renforcée, on cherche à obtenir un protecteur de type :
+
+```text
+TPM et PIN
+```
 
 ## Sauvegarder la clé de récupération
 
@@ -112,15 +145,7 @@ Si le résultat est `False`, Secure Boot doit être vérifié et réactivé depu
 
 La mesure recommandée consiste à éviter une configuration BitLocker en TPM-only lorsque la machine contient des données sensibles ou peut être exposée à un risque d'accès physique.
 
-Commande possible en invite de commandes administrateurice :
-
-```cmd
-manage-bde -protectors -add C: -TPMAndPIN
-```
-
-Avant d'exécuter cette commande, il faut vérifier que la stratégie locale autorise l'utilisation d'un PIN au démarrage.
-
-## Configuration via stratégie locale
+### Étape 1 — Ouvrir la stratégie locale
 
 Ouvrir l'éditeur de stratégie locale :
 
@@ -136,19 +161,94 @@ Configuration ordinateur
 → Composants Windows
 → Chiffrement de lecteur BitLocker
 → Lecteurs du système d'exploitation
+→ Exiger une authentification supplémentaire au démarrage
 ```
 
-Paramètre à configurer :
+### Étape 2 — Activer la stratégie
+
+Configurer la stratégie comme suit :
 
 ```text
-Exiger une authentification supplémentaire au démarrage
+État : Activé
 ```
 
-Recommandation :
+### Étape 3 — Configurer les options TPM
+
+Configuration recommandée :
 
 ```text
-Activer l'utilisation d'un PIN de démarrage avec TPM
+[ ] Autoriser BitLocker sans un module de plateforme sécurisée compatible
+
+Configurer le démarrage du module de plateforme sécurisée :
+→ Autoriser le module de plateforme sécurisée
+
+Configurer le code PIN de démarrage du module de plateforme sécurisée :
+→ Exiger un code PIN de démarrage avec le module de plateforme sécurisée
+
+Configurer la clé de démarrage du module de plateforme sécurisée :
+→ Ne pas autoriser de clé de démarrage avec le module de plateforme sécurisée
+
+Configurer le code PIN et la clé de démarrage du module de plateforme sécurisée :
+→ Ne pas autoriser de clé et de code PIN de démarrage avec le module de plateforme sécurisée
 ```
+
+La case **Autoriser BitLocker sans un module de plateforme sécurisée compatible** doit être décochée si la machine possède déjà un TPM fonctionnel.
+
+### Étape 4 — Appliquer la stratégie
+
+Cliquer sur :
+
+```text
+Appliquer
+OK
+```
+
+Puis lancer dans un terminal administrateur :
+
+```cmd
+gpupdate /force
+```
+
+### Étape 5 — Ajouter le protecteur TPM + PIN
+
+Dans un terminal administrateur :
+
+```cmd
+manage-bde -protectors -add C: -TPMAndPIN
+```
+
+Windows demande alors de définir un PIN BitLocker.
+
+Recommandations :
+
+- utiliser un PIN mémorisable
+- éviter les valeurs faibles comme 000000 ou 123456
+- ne pas stocker le PIN dans un fichier public
+- garder la clé de récupération BitLocker sous la main avant le premier redémarrage
+
+### Étape 6 — Vérifier la configuration
+
+Commande :
+
+```cmd
+manage-bde -protectors -get C:
+```
+
+Le résultat attendu doit contenir un protecteur de type :
+
+```text
+TPM et PIN
+```
+
+### Étape 7 — Tester au redémarrage
+
+Commande :
+
+```cmd
+shutdown /r /t 0
+```
+
+Au redémarrage, Windows doit demander le PIN BitLocker avant le chargement complet du système.
 
 ## Durcissement BIOS et UEFI
 
@@ -180,7 +280,9 @@ Actions recommandées :
 [ ] Protecteurs BitLocker vérifiés
 [ ] Secure Boot activé
 [ ] Mode TPM-only identifié ou écarté
-[ ] TPM + PIN activé si nécessaire
+[ ] Stratégie TPM + PIN configurée
+[ ] Protecteur TPM + PIN ajouté
+[ ] Redémarrage de test effectué
 [ ] Boot USB limité ou désactivé
 [ ] Boot PXE désactivé si non nécessaire
 [ ] Ordre de boot verrouillé
@@ -208,7 +310,7 @@ Cette documentation ne remplace pas :
 - un audit complet de configuration Windows
 - une analyse forensique
 - une revue officielle de conformité
-- une validation par un.e administrateurice système ou sécurité
+- une validation par une personne administratrice système ou sécurité
 
 BitLocker protège les données au repos. Il ne protège pas complètement une machine déjà déverrouillée, compromise ou laissée sans surveillance avec une session active.
 

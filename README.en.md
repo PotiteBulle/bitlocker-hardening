@@ -49,6 +49,22 @@ This documentation mainly focuses on the following scenarios:
 - downgrade attack against certain boot components
 - overly permissive TPM-only BitLocker configuration
 
+## Recommended state
+
+Recommended configuration for a sensitive workstation:
+
+```text
+BitLocker enabled
+Secure Boot enabled
+TPM enabled
+Recovery key backed up
+TPM + PIN protector enabled
+USB boot limited if not required
+PXE boot disabled if not required
+Firmware up to date
+Windows Update up to date
+```
+
 ## Check BitLocker status
 
 PowerShell command:
@@ -60,7 +76,16 @@ Get-BitLockerVolume
 Alternative command:
 
 ```cmd
-manage-bde -status
+manage-bde -status C:
+```
+
+Useful items to check:
+
+```text
+Conversion Status
+Protection Status
+Lock Status
+Encryption Method
 ```
 
 ## Check BitLocker protectors
@@ -71,12 +96,20 @@ Command:
 manage-bde -protectors -get C:
 ```
 
-Items to check:
+In a TPM-only configuration, the result may only show:
 
-- presence of a TPM protector
-- presence of a recovery key
-- presence or absence of a startup PIN
-- type of protector used for the system drive
+```text
+TPM
+Numerical Password
+```
+
+The **Numerical Password** is the BitLocker recovery key.
+
+In a hardened configuration, the expected protector is:
+
+```text
+TPM and PIN
+```
 
 ## Back up the recovery key
 
@@ -112,15 +145,7 @@ If the result is `False`, Secure Boot should be checked and re-enabled from the 
 
 The recommended measure is to avoid a TPM-only BitLocker configuration when the machine contains sensitive data or may be exposed to physical access risk.
 
-Possible command from an elevated command prompt:
-
-```cmd
-manage-bde -protectors -add C: -TPMAndPIN
-```
-
-Before running this command, check that the local policy allows the use of a startup PIN.
-
-## Local policy configuration
+### Step 1 — Open Local Group Policy
 
 Open the Local Group Policy Editor:
 
@@ -136,19 +161,94 @@ Computer Configuration
 → Windows Components
 → BitLocker Drive Encryption
 → Operating System Drives
+→ Require additional authentication at startup
 ```
 
-Policy to configure:
+### Step 2 — Enable the policy
+
+Configure the policy as follows:
 
 ```text
-Require additional authentication at startup
+State : Enabled
 ```
 
-Recommendation:
+### Step 3 — Configure TPM options
+
+Recommended configuration:
 
 ```text
-Enable the use of a startup PIN with TPM
+[ ] Allow BitLocker without a compatible TPM
+
+Configure TPM startup:
+→ Allow TPM
+
+Configure TPM startup PIN:
+→ Require startup PIN with TPM
+
+Configure TPM startup key:
+→ Do not allow startup key with TPM
+
+Configure TPM startup key and PIN:
+→ Do not allow startup key and PIN with TPM
 ```
+
+The option **Allow BitLocker without a compatible TPM** should be unchecked if the machine already has a working TPM.
+
+### Step 4 — Apply the policy
+
+Click:
+
+```text
+Apply
+OK
+```
+
+Then run from an elevated terminal:
+
+```cmd
+gpupdate /force
+```
+
+### Step 5 — Add the TPM + PIN protector
+
+From an elevated terminal:
+
+```cmd
+manage-bde -protectors -add C: -TPMAndPIN
+```
+
+Windows will then ask you to define a BitLocker PIN.
+
+Recommendations:
+
+- use a PIN you can remember
+- avoid weak values such as 000000 or 123456
+- do not store the PIN in a public file
+- keep the BitLocker recovery key available before the first reboot
+
+### Step 6 — Verify the configuration
+
+Command:
+
+```cmd
+manage-bde -protectors -get C:
+```
+
+The expected result should include a protector of type:
+
+```text
+TPM and PIN
+```
+
+### Step 7 — Test on reboot
+
+Command:
+
+```cmd
+shutdown /r /t 0
+```
+
+On reboot, Windows should ask for the BitLocker PIN before fully loading the system.
 
 ## BIOS and UEFI hardening
 
@@ -180,7 +280,9 @@ Recommended actions:
 [ ] BitLocker protectors checked
 [ ] Secure Boot enabled
 [ ] TPM-only mode identified or ruled out
-[ ] TPM + PIN enabled if required
+[ ] TPM + PIN policy configured
+[ ] TPM + PIN protector added
+[ ] Reboot test completed
 [ ] USB boot limited or disabled
 [ ] PXE boot disabled if not required
 [ ] Boot order locked
